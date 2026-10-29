@@ -1,9 +1,11 @@
 """Retrieval + generation: answer questions and build practice quizzes with Claude."""
 
 import json
+import re
 
 import anthropic
 
+from app import config
 from app.config import CLAUDE_MODEL
 from app.vector_store import SearchResult, VectorStore
 
@@ -51,7 +53,7 @@ class RefusedError(RuntimeError):
 
 def format_context(results: list[SearchResult]) -> str:
     return "\n\n".join(
-        f"[{i}] ({r.document}, page {r.page})\n{r.text}" for i, r in enumerate(results, start=1)
+        f"[{i}] ({r.document}, page {r.pages})\n{r.text}" for i, r in enumerate(results, start=1)
     )
 
 
@@ -66,8 +68,15 @@ class StudyAssistant:
         self.store = store
         self.client = client or anthropic.Anthropic()
 
+    def retrieve(self, question: str, document: str | None = None) -> tuple[str, list[SearchResult]]:
+        """Small material goes in whole; larger material falls back to similarity search."""
+        everything = self.store.all_chunks(document)
+        if sum(len(r.text) for r in everything) <= config.FULL_CONTEXT_CHARS:
+            return "full", everything
+        return "search", self.store.search(question, document=document)
+
     def ask(self, question: str, document: str | None = None) -> dict:
-        results = self.store.search(question, document=document)
+        mode, results = self.retrieve(question, document)
         if not results:
             return {"answer": "No documents uploaded yet. Upload a PDF first.", "sources": []}
 
@@ -82,11 +91,16 @@ class StudyAssistant:
             }],
             **FALLBACK_ARGS,
         )
+        answer = _text(response)
+        cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
         return {
-            "answer": _text(response),
+            "answer": answer,
+            "mode": mode,
+            # In full-context mode every chunk was sent, so only list the ones cited.
             "sources": [
-                {"id": i, "document": r.document, "page": r.page, "text": r.text, "score": round(r.score, 3)}
+                {"id": i, "document": r.document, "pages": r.pages, "text": r.text, "score": round(r.score, 3)}
                 for i, r in enumerate(results, start=1)
+                if mode == "search" or i in cited
             ],
         }
 

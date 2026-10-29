@@ -10,8 +10,13 @@ from app.pdf_loader import Page
 @dataclass
 class Chunk:
     text: str
-    page: int
+    page: int  # first page the chunk covers
     index: int  # position within the document
+    page_end: int | None = None  # last page, when short pages were merged
+
+    def __post_init__(self):
+        if self.page_end is None:
+            self.page_end = self.page
 
 
 def _normalize(text: str) -> str:
@@ -45,9 +50,27 @@ def split_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) 
     return chunks
 
 
-def chunk_pages(pages: list[Page]) -> list[Chunk]:
+def chunk_pages(pages: list[Page], size: int = CHUNK_SIZE) -> list[Chunk]:
+    """Long pages are split; consecutive short pages (e.g. slides) are merged so each
+    chunk carries enough context to be useful on its own."""
     chunks: list[Chunk] = []
+    buffer: list[Page] = []
+
+    def flush():
+        if buffer:
+            text = "\n\n".join(p.text for p in buffer)
+            chunks.append(Chunk(text, buffer[0].number, len(chunks), buffer[-1].number))
+            buffer.clear()
+
     for page in pages:
-        for piece in split_text(page.text):
-            chunks.append(Chunk(text=piece, page=page.number, index=len(chunks)))
+        text = _normalize(page.text)
+        if len(text) > size:
+            flush()
+            for piece in split_text(text, size=size, overlap=min(CHUNK_OVERLAP, size // 4)):
+                chunks.append(Chunk(piece, page.number, len(chunks)))
+            continue
+        if buffer and sum(len(p.text) for p in buffer) + len(text) > size:
+            flush()
+        buffer.append(Page(page.number, text))
+    flush()
     return chunks

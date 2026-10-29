@@ -15,3 +15,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 CHUNK_SIZE = 1000  # characters
 CHUNK_OVERLAP = 150
 TOP_K = 5
+# If everything being searched fits under this many characters (~15-20K tokens),
+# send all of it instead of the top-k chunks. Broad questions like "summarize this
+# file" need the whole document, which similarity search can't provide.
+FULL_CONTEXT_CHARS = 60_000

@@ -36,6 +36,22 @@ class SearchResult:
     page: int
     document: str
     score: float  # cosine similarity, higher is better
+    page_end: int | None = None
+
+    def __post_init__(self):
+        if self.page_end is None:
+            self.page_end = self.page
+
+    @property
+    def pages(self) -> str:
+        return str(self.page) if self.page == self.page_end else f"{self.page}-{self.page_end}"
+
+
+def _result(text: str, meta: dict, score: float = 1.0) -> SearchResult:
+    return SearchResult(
+        text=text, page=meta["page"], document=meta["document"], score=score,
+        page_end=meta.get("page_end"),  # absent in documents indexed before page merging
+    )
 
 
 class VectorStore:
@@ -54,7 +70,7 @@ class VectorStore:
             ids=[f"{document}::{c.index}" for c in chunks],
             documents=[c.text for c in chunks],
             embeddings=self.embedder.embed([c.text for c in chunks]),
-            metadatas=[{"document": document, "page": c.page} for c in chunks],
+            metadatas=[{"document": document, "page": c.page, "page_end": c.page_end} for c in chunks],
         )
         return len(chunks)
 
@@ -65,22 +81,24 @@ class VectorStore:
             where={"document": document} if document else None,
         )
         return [
-            SearchResult(text=text, page=meta["page"], document=meta["document"], score=1 - dist)
+            _result(text, meta, score=1 - dist)
             for text, meta, dist in zip(res["documents"][0], res["metadatas"][0], res["distances"][0])
         ]
 
-    def sample(self, document: str, n: int = 8) -> list[SearchResult]:
-        """Evenly spaced chunks across a document, used to generate quizzes."""
-        res = self.collection.get(where={"document": document})
+    def all_chunks(self, document: str | None = None) -> list[SearchResult]:
+        """Every chunk in reading order (by document, then position)."""
+        res = self.collection.get(where={"document": document} if document else None)
         rows = sorted(
             zip(res["ids"], res["documents"], res["metadatas"]),
-            key=lambda r: int(r[0].rsplit("::", 1)[1]),
+            key=lambda r: (r[2]["document"], int(r[0].rsplit("::", 1)[1])),
         )
+        return [_result(text, meta) for _, text, meta in rows]
+
+    def sample(self, document: str, n: int = 8) -> list[SearchResult]:
+        """Evenly spaced chunks across a document, used to generate quizzes."""
+        rows = self.all_chunks(document)
         step = max(1, len(rows) // n)
-        return [
-            SearchResult(text=text, page=meta["page"], document=document, score=1.0)
-            for _, text, meta in rows[::step][:n]
-        ]
+        return rows[::step][:n]
 
     def documents(self) -> list[str]:
         metas = self.collection.get(include=["metadatas"])["metadatas"]

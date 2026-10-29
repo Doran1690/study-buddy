@@ -27,7 +27,13 @@ Question ──► embed ──► top-k similarity search ◄──────
    paragraph and sentence boundaries so ideas aren't cut mid-thought.
 3. **Embedding**: `paraphrase-multilingual-MiniLM-L12-v2` maps Hebrew and English
    text into the same vector space, so a Hebrew question can match English notes.
-4. **Retrieval**: cosine similarity search in Chroma returns the top 5 chunks.
+   Consecutive short pages (like slides) are merged, so a chunk never holds just a title.
+4. **Retrieval**, with two modes:
+   - **Full context**: when the material being searched is small (under ~60K characters),
+     all of it is sent in reading order. Broad questions like "summarize this file" need
+     the whole document, which top-k search can't provide.
+   - **Similarity search**: for larger material, cosine similarity search in Chroma
+     returns the top 5 chunks.
 5. **Generation**: Claude answers only from the numbered excerpts, cites them inline,
    and says so when the material doesn't contain the answer.
 6. **Quiz mode**: chunks sampled evenly across the document are sent to Claude with a

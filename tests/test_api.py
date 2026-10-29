@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
+from app.chunking import chunk_pages
 from app.rag import StudyAssistant
 from app.vector_store import VectorStore
 
@@ -81,15 +82,26 @@ def test_rejects_non_pdf(client):
     assert r.status_code == 400
 
 
-def test_ask_sends_retrieved_context_to_claude(client):
+def test_small_material_is_sent_whole(client):
     c, messages = client
     upload(c)
-    r = c.post("/api/ask", json={"question": "What does photosynthesis make from sunlight?"})
-    body = r.json()
+    body = c.post("/api/ask", json={"question": "Summarize the file"}).json()
+    assert body["mode"] == "full"
     assert "glucose" in body["answer"]
-    assert body["sources"][0]["page"] == 1  # most relevant chunk ranked first
     prompt = messages.calls[0]["messages"][0]["content"]
-    assert "Photosynthesis" in prompt and "page 1" in prompt
+    assert "Photosynthesis" in prompt and "Mitochondria" in prompt  # both pages sent
+    assert [s["id"] for s in body["sources"]] == [1]  # only the cited source is listed
+
+
+def test_large_material_uses_similarity_search(client, monkeypatch):
+    monkeypatch.setattr("app.config.FULL_CONTEXT_CHARS", 0)
+    # Small chunks so each page becomes its own chunk.
+    monkeypatch.setattr(main, "chunk_pages", lambda pages: chunk_pages(pages, size=30))
+    c, messages = client
+    upload(c)
+    body = c.post("/api/ask", json={"question": "What does photosynthesis make from sunlight?"}).json()
+    assert body["mode"] == "search"
+    assert body["sources"][0]["pages"] == "1"  # most relevant chunk ranked first
 
 
 def test_ask_without_documents(client):

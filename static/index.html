@@ -29,7 +29,11 @@
   #messages { min-height:200px; max-height:55vh; overflow:auto; display:flex; flex-direction:column; gap:10px; margin-bottom:12px; }
   .msg { padding:10px 12px; border-radius:10px; white-space:pre-wrap; line-height:1.5; }
   .msg.user { background:var(--accent); color:#fff; align-self:flex-start; max-width:85%; }
-  .msg.bot { background:var(--bg); border:1px solid var(--border); }
+  .msg.bot { background:var(--bg); border:1px solid var(--border); white-space:normal; }
+  .msg.bot p, .msg.bot ul, .msg.bot ol { margin:0 0 8px; } .msg.bot ul, .msg.bot ol { padding-inline-start:20px; }
+  .msg.bot h3, .msg.bot h4 { margin:8px 0 4px; font-size:1rem; }
+  .msg.bot code { background:var(--border); padding:1px 4px; border-radius:4px; }
+  .cite { color:var(--accent); font-size:.8em; font-weight:600; }
   details { margin-top:8px; font-size:.85rem; color:var(--muted); }
   details p { margin:6px 0; white-space:pre-wrap; }
   form.row { display:flex; gap:8px; }
@@ -116,6 +120,33 @@ $("file").onchange = async (e) => {
   e.target.value = "";
 };
 
+// Minimal Markdown: headings, lists, bold, inline code, citations. HTML is escaped
+// first, so model output can never inject markup.
+function renderMarkdown(md) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[(\d+)\]/g, '<span class="cite">[$1]</span>');
+  let html = "", list = null;
+  const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+  for (const line of md.split("\n")) {
+    const t = line.trim();
+    let m;
+    if ((m = t.match(/^[-*•]\s+(.*)/)) || (m = t.match(/^\d+[.)]\s+(.*)/))) {
+      const type = /^\d/.test(t) ? "ol" : "ul";
+      if (list !== type) { closeList(); html += `<${type}>`; list = type; }
+      html += `<li>${inline(m[1])}</li>`;
+    } else if ((m = t.match(/^#{1,6}\s+(.*)/))) {
+      closeList(); html += `<h4>${inline(m[1])}</h4>`;
+    } else if (t) {
+      closeList(); html += `<p>${inline(t)}</p>`;
+    } else closeList();
+  }
+  closeList();
+  return html;
+}
+
 function addMsg(cls, text) {
   const div = document.createElement("div");
   div.className = "msg " + cls; div.textContent = text;
@@ -133,13 +164,14 @@ $("askForm").onsubmit = async (e) => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, document: $("docSelect").value || null }),
     });
-    bot.textContent = r.answer;
+    bot.innerHTML = renderMarkdown(r.answer);
     if (r.sources.length) {
       const det = document.createElement("details");
       det.innerHTML = "<summary>מקורות</summary>";
       for (const s of r.sources) {
         const p = document.createElement("p");
-        p.textContent = `[${s.id}] ${s.document}, עמוד ${s.page}: ${s.text.slice(0, 300)}…`;
+        const label = s.pages.includes("-") ? "עמודים" : "עמוד";
+        p.textContent = `[${s.id}] ${s.document}, ${label} ${s.pages}: ${s.text.slice(0, 300)}…`;
         det.append(p);
       }
       bot.append(det);
