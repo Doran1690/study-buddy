@@ -94,8 +94,8 @@ class VectorStore:
         )
         return [_result(text, meta) for _, text, meta in rows]
 
-    def sample(self, document: str, n: int = 8) -> list[SearchResult]:
-        """Evenly spaced chunks across a document, used to generate quizzes."""
+    def sample(self, document: str | None = None, n: int = 8) -> list[SearchResult]:
+        """Evenly spaced chunks across one document (or all of them), used for quizzes."""
         rows = self.all_chunks(document)
         step = max(1, len(rows) // n)
         return rows[::step][:n]

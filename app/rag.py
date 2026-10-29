@@ -31,9 +31,10 @@ QUIZ_SCHEMA = {
                     "options": {"type": "array", "items": {"type": "string"}},
                     "correct_index": {"type": "integer"},
                     "explanation": {"type": "string"},
+                    "document": {"type": "string"},
                     "page": {"type": "integer"},
                 },
-                "required": ["question", "options", "correct_index", "explanation", "page"],
+                "required": ["question", "options", "correct_index", "explanation", "document", "page"],
                 "additionalProperties": False,
             },
         }
@@ -104,10 +105,11 @@ class StudyAssistant:
             ],
         }
 
-    def quiz(self, document: str, num_questions: int = 5) -> list[dict]:
-        excerpts = self.store.sample(document)
+    def quiz(self, document: str | None = None, num_questions: int = 5) -> list[dict]:
+        # Sample more excerpts than questions so they spread across the material.
+        excerpts = self.store.sample(document, n=max(8, 2 * num_questions))
         if not excerpts:
-            raise ValueError(f"Unknown document: {document}")
+            raise ValueError(f"Unknown document: {document}" if document else "No documents uploaded yet.")
 
         response = self.client.beta.messages.create(
             model=CLAUDE_MODEL,
@@ -122,7 +124,7 @@ class StudyAssistant:
                 "content": (
                     f"<excerpts>\n{format_context(excerpts)}\n</excerpts>\n\n"
                     f"Write {num_questions} multiple-choice questions with 4 options each. "
-                    "Set page to the page number the answer comes from."
+                    "Set document and page to where the answer comes from."
                 ),
             }],
             **FALLBACK_ARGS,

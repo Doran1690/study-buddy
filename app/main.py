@@ -49,7 +49,7 @@ class AskRequest(BaseModel):
 
 
 class QuizRequest(BaseModel):
-    document: str
+    document: str | None = None  # None: quiz across all documents
     num_questions: int = Field(default=5, ge=1, le=15)
 
 

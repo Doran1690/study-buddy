@@ -181,8 +181,7 @@ $("askForm").onsubmit = async (e) => {
 };
 
 $("quizBtn").onclick = async () => {
-  const document_ = $("docSelect").value;
-  if (!document_) { $("quizOut").textContent = "בחרו מסמך מהרשימה למעלה."; return; }
+  const document_ = $("docSelect").value || null;
   $("quizBtn").disabled = true; $("quizOut").textContent = "מכין שאלות...";
   try {
     const { questions } = await api("/api/quiz", {
@@ -194,7 +193,7 @@ $("quizBtn").onclick = async () => {
       const box = document.createElement("div"); box.className = "q";
       const h = document.createElement("strong"); h.textContent = `${qi + 1}. ${q.question}`; box.append(h);
       const expl = document.createElement("p"); expl.className = "muted hidden";
-      expl.textContent = `${q.explanation} (עמוד ${q.page})`;
+      expl.textContent = `${q.explanation} (${q.document}, עמוד ${q.page})`;
       q.options.forEach((opt, oi) => {
         const lbl = document.createElement("label"); lbl.textContent = opt;
         lbl.onclick = () => {

@@ -38,7 +38,7 @@ class FakeMessages:
         if "format" in kwargs["output_config"]:
             text = json.dumps({"questions": [{
                 "question": "What do plants make?", "options": ["Glucose", "Iron", "Salt", "Gold"],
-                "correct_index": 0, "explanation": "Photosynthesis makes glucose.", "page": 1,
+                "correct_index": 0, "explanation": "Photosynthesis makes glucose.", "document": "bio.pdf", "page": 1,
             }]})
         else:
             text = "Plants make glucose from sunlight [1]."
@@ -116,6 +116,21 @@ def test_quiz(client):
     upload(c)
     r = c.post("/api/quiz", json={"document": "bio.pdf"})
     assert r.json()["questions"][0]["options"][0] == "Glucose"
+
+
+def test_quiz_across_all_documents(client):
+    c, messages = client
+    upload(c, "bio.pdf")
+    c.post("/api/documents", files={"file": ("chem.pdf", make_pdf(["Water is H2O."]), "application/pdf")})
+    r = c.post("/api/quiz", json={})
+    assert r.status_code == 200
+    prompt = messages.calls[0]["messages"][0]["content"]
+    assert "bio.pdf" in prompt and "chem.pdf" in prompt  # excerpts from both files
+
+
+def test_quiz_with_no_documents(client):
+    c, _ = client
+    assert c.post("/api/quiz", json={}).status_code == 404
 
 
 def test_quiz_unknown_document(client):
