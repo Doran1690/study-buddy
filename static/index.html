@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study Buddy</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --accent:#3b5bdb; --border:#e3e6eb; --ok:#2f9e44; --bad:#e03131; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161b; --card:#1d2027; --text:#e6e8ec; --muted:#9aa1ad; --accent:#748ffc; --border:#2c3039; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Segoe UI", Arial, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:20px 16px 8px; max-width:960px; margin:auto; }
+  header h1 { margin:0; font-size:1.6rem; }
+  header p { margin:4px 0 0; color:var(--muted); }
+  main { max-width:960px; margin:auto; padding:16px; display:grid; gap:16px; grid-template-columns: 280px 1fr; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  h2 { font-size:1rem; margin:0 0 12px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; font:inherit; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
+  input[type=text], select { width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:inherit; }
+  ul.docs { list-style:none; padding:0; margin:12px 0 0; }
+  ul.docs li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); font-size:.9rem; word-break:break-all; }
+  .tabs { display:flex; gap:8px; margin-bottom:12px; }
+  .tabs button.active { background:var(--accent); } .tabs button:not(.active) { background:transparent; color:var(--text); border:1px solid var(--border); }
+  #messages { min-height:200px; max-height:55vh; overflow:auto; display:flex; flex-direction:column; gap:10px; margin-bottom:12px; }
+  .msg { padding:10px 12px; border-radius:10px; white-space:pre-wrap; line-height:1.5; }
+  .msg.user { background:var(--accent); color:#fff; align-self:flex-start; max-width:85%; }
+  .msg.bot { background:var(--bg); border:1px solid var(--border); }
+  details { margin-top:8px; font-size:.85rem; color:var(--muted); }
+  details p { margin:6px 0; white-space:pre-wrap; }
+  form.row { display:flex; gap:8px; }
+  .q { margin-bottom:16px; } .q label { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; }
+  .q label.correct { background: color-mix(in srgb, var(--ok) 20%, transparent); }
+  .q label.wrong { background: color-mix(in srgb, var(--bad) 20%, transparent); }
+  .muted { color:var(--muted); font-size:.85rem; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Study Buddy</h1>
+  <p>העלו חומרי קורס, שאלו שאלות וקבלו תשובות עם מקורות, וצרו מבחני תרגול.</p>
+</header>
+<main>
+  <section class="card">
+    <h2>המסמכים שלי</h2>
+    <input type="file" id="file" accept="application/pdf">
+    <p class="muted" id="uploadStatus"></p>
+    <ul class="docs" id="docs"></ul>
+  </section>
+
+  <section class="card">
+    <div class="tabs">
+      <button class="active" data-tab="chat">💬 שאלות</button>
+      <button data-tab="quiz">📝 מבחן תרגול</button>
+    </div>
+    <label class="muted">חיפוש ב:</label>
+    <select id="docSelect"><option value="">כל המסמכים</option></select>
+
+    <div id="chat" style="margin-top:12px">
+      <div id="messages"></div>
+      <form class="row" id="askForm">
+        <input type="text" id="question" placeholder="למשל: מה ההבדל בין מיטוזה למיוזה?" autocomplete="off">
+        <button id="askBtn">שאל</button>
+      </form>
+    </div>
+
+    <div id="quiz" class="hidden" style="margin-top:12px">
+      <button id="quizBtn">צור 5 שאלות</button>
+      <div id="quizOut" style="margin-top:16px"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || res.statusText);
+  return body;
+}
+
+async function loadDocs() {
+  const { documents } = await api("/api/documents");
+  $("docs").innerHTML = "";
+  const sel = $("docSelect"), current = sel.value;
+  sel.innerHTML = '<option value="">כל המסמכים</option>';
+  for (const d of documents) {
+    const li = document.createElement("li");
+    li.textContent = d;
+    const del = document.createElement("button");
+    del.className = "ghost"; del.textContent = "מחק";
+    del.onclick = async () => { await api(`/api/documents/${encodeURIComponent(d)}`, { method: "DELETE" }); loadDocs(); };
+    li.append(del); $("docs").append(li);
+    sel.add(new Option(d, d));
+  }
+  sel.value = documents.includes(current) ? current : "";
+  if (!documents.length) $("docs").innerHTML = '<li class="muted">עדיין אין מסמכים</li>';
+}
+
+$("file").onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append("file", file);
+  $("uploadStatus").textContent = "מעבד...";
+  try {
+    const r = await api("/api/documents", { method: "POST", body: fd });
+    $("uploadStatus").textContent = `✓ ${r.pages} עמודים, ${r.chunks} קטעים`;
+    loadDocs();
+  } catch (err) { $("uploadStatus").textContent = "שגיאה: " + err.message; }
+  e.target.value = "";
+};
+
+function addMsg(cls, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls; div.textContent = text;
+  $("messages").append(div); $("messages").scrollTop = 1e9;
+  return div;
+}
+
+$("askForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const question = $("question").value.trim(); if (!question) return;
+  addMsg("user", question); $("question").value = "";
+  const bot = addMsg("bot", "חושב..."); $("askBtn").disabled = true;
+  try {
+    const r = await api("/api/ask", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, document: $("docSelect").value || null }),
+    });
+    bot.textContent = r.answer;
+    if (r.sources.length) {
+      const det = document.createElement("details");
+      det.innerHTML = "<summary>מקורות</summary>";
+      for (const s of r.sources) {
+        const p = document.createElement("p");
+        p.textContent = `[${s.id}] ${s.document}, עמוד ${s.page}: ${s.text.slice(0, 300)}…`;
+        det.append(p);
+      }
+      bot.append(det);
+    }
+  } catch (err) { bot.textContent = "שגיאה: " + err.message; }
+  $("askBtn").disabled = false;
+};
+
+$("quizBtn").onclick = async () => {
+  const document_ = $("docSelect").value;
+  if (!document_) { $("quizOut").textContent = "בחרו מסמך מהרשימה למעלה."; return; }
+  $("quizBtn").disabled = true; $("quizOut").textContent = "מכין שאלות...";
+  try {
+    const { questions } = await api("/api/quiz", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ document: document_, num_questions: 5 }),
+    });
+    $("quizOut").innerHTML = "";
+    questions.forEach((q, qi) => {
+      const box = document.createElement("div"); box.className = "q";
+      const h = document.createElement("strong"); h.textContent = `${qi + 1}. ${q.question}`; box.append(h);
+      const expl = document.createElement("p"); expl.className = "muted hidden";
+      expl.textContent = `${q.explanation} (עמוד ${q.page})`;
+      q.options.forEach((opt, oi) => {
+        const lbl = document.createElement("label"); lbl.textContent = opt;
+        lbl.onclick = () => {
+          box.querySelectorAll("label").forEach((l, i) => { if (i === q.correct_index) l.classList.add("correct"); });
+          if (oi !== q.correct_index) lbl.classList.add("wrong");
+          expl.classList.remove("hidden");
+        };
+        box.append(lbl);
+      });
+      box.append(expl); $("quizOut").append(box);
+    });
+  } catch (err) { $("quizOut").textContent = "שגיאה: " + err.message; }
+  $("quizBtn").disabled = false;
+};
+
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
+  $("chat").classList.toggle("hidden", b.dataset.tab !== "chat");
+  $("quiz").classList.toggle("hidden", b.dataset.tab !== "quiz");
+});
+
+loadDocs();
+</script>
+</body>
+</html>
