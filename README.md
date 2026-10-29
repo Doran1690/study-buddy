@@ -25,9 +25,9 @@ Question ──► embed ──► top-k similarity search ◄──────
 1. **Extraction**: text is pulled from each page and the page number is kept.
 2. **Chunking**: pages are split into ~1000-character chunks with overlap, preferring
    paragraph and sentence boundaries so ideas aren't cut mid-thought.
+   Consecutive short pages (like slides) are merged, so a chunk never holds just a title.
 3. **Embedding**: `paraphrase-multilingual-MiniLM-L12-v2` maps Hebrew and English
    text into the same vector space, so a Hebrew question can match English notes.
-   Consecutive short pages (like slides) are merged, so a chunk never holds just a title.
 4. **Retrieval**, with two modes:
    - **Full context**: when the material being searched is small (under ~60K characters),
      all of it is sent in reading order. Broad questions like "summarize this file" need
