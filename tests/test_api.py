@@ -116,3 +116,28 @@ def test_delete(client):
     upload(c)
     c.delete("/api/documents/bio.pdf")
     assert c.get("/api/documents").json() == {"documents": []}
+
+
+def test_store_is_built_once_under_concurrent_requests(monkeypatch, tmp_path):
+    """Regression: concurrent first requests used to open Chroma twice and crash."""
+    import threading
+    import time
+
+    built = []
+
+    def slow_store():
+        time.sleep(0.2)  # like downloading the embedding model on first use
+        built.append(1)
+        return VectorStore(embedder=FakeEmbedder(), path=str(tmp_path))
+
+    monkeypatch.setattr(main, "VectorStore", slow_store)
+    main._build_store.cache_clear()
+    try:
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(main.get_store())) for _ in range(4)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        assert len(built) == 1
+        assert len({id(s) for s in results}) == 1
+    finally:
+        main._build_store.cache_clear()

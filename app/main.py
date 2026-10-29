@@ -1,3 +1,4 @@
+import threading
 from functools import lru_cache
 from pathlib import Path
 
@@ -16,14 +17,30 @@ MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 app = FastAPI(title="Study Buddy", description="Chat with your course PDFs and generate practice quizzes.")
 
 
+# FastAPI runs sync dependencies in a thread pool, so the first requests can arrive
+# concurrently. lru_cache alone doesn't stop two threads from building the store at
+# once, and Chroma fails when two clients open the same folder simultaneously.
+_init_lock = threading.RLock()
+
+
 @lru_cache
-def get_store() -> VectorStore:
+def _build_store() -> VectorStore:
     return VectorStore()
 
 
 @lru_cache
-def get_assistant() -> StudyAssistant:
+def _build_assistant() -> StudyAssistant:
     return StudyAssistant(get_store())
+
+
+def get_store() -> VectorStore:
+    with _init_lock:
+        return _build_store()
+
+
+def get_assistant() -> StudyAssistant:
+    with _init_lock:
+        return _build_assistant()
 
 
 class AskRequest(BaseModel):
