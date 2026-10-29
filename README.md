@@ -1,5 +1,8 @@
 # 📚 Study Buddy: chat with your course material
 
+[![tests](https://github.com/Doran1690/study-buddy/actions/workflows/tests.yml/badge.svg)](https://github.com/Doran1690/study-buddy/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/python-3.12+-blue)
+
 Upload lecture notes or course PDFs, ask questions in **Hebrew or English**, and get answers
 grounded in your material with **page-level citations**. Generate **practice exams** from
 any document with one click.
@@ -7,7 +10,9 @@ any document with one click.
 Built as a Retrieval-Augmented Generation (RAG) system with FastAPI, Chroma, multilingual
 sentence embeddings, and Claude.
 
-<!-- TODO: add a screenshot / GIF here -->
+<!-- Screenshot: save it as docs/screenshot.png, then remove these comment markers:
+![Study Buddy answering a question with page citations](docs/screenshot.png)
+-->
 
 ## How it works
 
@@ -22,7 +27,9 @@ Question ──► embed ──► top-k similarity search ◄──────
             numbered excerpts + question ──► Claude ──► answer with [1][2] citations
 ```
 
-1. **Extraction**: text is pulled from each page and the page number is kept.
+1. **Extraction and cleaning**: text is pulled from each page, keeping the page number.
+   Noise common in slide decks is removed: lines duplicated by text-shadow effects, and
+   headers or footers that repeat on most pages.
 2. **Chunking**: pages are split into ~1000-character chunks with overlap, preferring
    paragraph and sentence boundaries so ideas aren't cut mid-thought.
    Consecutive short pages (like slides) are merged, so a chunk never holds just a title.
@@ -36,8 +43,9 @@ Question ──► embed ──► top-k similarity search ◄──────
      returns the top 5 chunks.
 5. **Generation**: Claude answers only from the numbered excerpts, cites them inline,
    and says so when the material doesn't contain the answer.
-6. **Quiz mode**: chunks sampled evenly across the document are sent to Claude with a
-   JSON schema (structured outputs), so the response is always a valid quiz.
+6. **Quiz mode**: chunks sampled evenly across one document, or across all of them, are
+   sent to Claude with a JSON schema (structured outputs), so the response is always a
+   valid quiz. Each question points back to its document and page.
 
 ## Tech stack
 
@@ -72,7 +80,7 @@ The first upload downloads the embedding model (~470MB), so it takes a minute.
 | `GET` | `/api/documents` | List indexed documents |
 | `DELETE` | `/api/documents/{name}` | Remove a document |
 | `POST` | `/api/ask` | `{"question": "...", "document": null}` → answer + sources |
-| `POST` | `/api/quiz` | `{"document": "...", "num_questions": 5}` → multiple-choice quiz |
+| `POST` | `/api/quiz` | `{"document": null, "num_questions": 5}` → multiple-choice quiz (`null` = all documents) |
 
 ## Tests
 
@@ -82,6 +90,23 @@ pytest
 
 The tests use a deterministic fake embedder and a fake Claude client, so they run in
 seconds with no network access or API key.
+
+## Lessons learned
+
+Testing on real course material surfaced problems the unit tests didn't:
+
+- **Slide decks are noisy.** An 84-slide lecture exported from PowerPoint contained every
+  line twice because of a text-shadow effect, plus a copyright footer on every page. Half
+  the extracted text was noise. A cleaning step (dedupe adjacent lines, drop lines that
+  appear on most pages) cut it from 32K to 16K characters without losing content.
+- **Top-k retrieval can't answer broad questions.** "Summarize this file" returned five
+  disconnected slides. Retrieval now switches modes: small material is sent whole, and
+  similarity search is used only when the material is too large for that.
+- **Tiny chunks lose meaning.** One chunk per slide meant many chunks were just a title.
+  Consecutive short pages are now merged into one chunk.
+- **A race condition on startup.** Two requests arriving while the embedding model was
+  still downloading both tried to open the Chroma database and crashed it. Initialization
+  is now guarded by a lock, with a regression test that reproduces the timing.
 
 ## Roadmap
 
