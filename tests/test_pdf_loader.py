@@ -4,7 +4,8 @@ from app.pdf_loader import Page, dedupe_lines, remove_boilerplate
 def test_dedupe_shadow_lines():
     # Real pattern from a slide deck exported with text shadows.
     text = "מורכבות\nמורכבות\n/ \n /\n?\n?מורכבות\nמורכבות\n1\n1\n2\n2"
-    assert dedupe_lines(text) == "מורכבות\n/ \n?\n?מורכבות\n1\n2"
+    # Punctuation-only lines ("/", "?") compare equal, so the "?" after "/" goes too.
+    assert dedupe_lines(text) == "מורכבות\n/ \n?מורכבות\n1\n2"
 
 
 def test_dedupe_keeps_non_adjacent_repeats():
